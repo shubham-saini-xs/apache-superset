@@ -1,0 +1,52 @@
+stages:
+    - deploy_superset
+    - modify_superset_config
+    - destroy_superset
+
+deploy_superset:
+    stage: deploy_superset
+    script:
+        - export KUBECONFIG=$DATAOPS_CLUSTER_KUBECONFIG
+        - kubectl create ns superset                        
+        - kubectl config set-context --current --namespace=superset
+        - echo "---------------------| Deploying Apache Superset |---------------------"
+        - helm install my-superset ./superset-helm/. --debug
+        - kubectl patch service my-superset --type='json' -p='[{"op":"replace", "path":"/spec/type", "value":"NodePort"}, {"op":"replace", "path":"/spec/ports/0/nodePort", "value":31338}]'
+        - kubectl patch service my-superset-postgresql --type='json' -p='[{"op":"replace", "path":"/spec/type", "value":"NodePort"}, {"op":"replace", "path":"/spec/ports/0/nodePort", "value":32102}]'
+        - echo "---------------------| Apache Superset Deployed Successfully |---------------------"
+        - kubectl get all
+        - node_private_ip=$(kubectl describe pods -l app=istio-ingressgateway -n istio-system | grep -m1 '^Node:' | cut -d/ -f2)
+        - echo "---------------------| Access Links |---------------------"
+        - echo "Superset dashboard:$node_private_ip:31338"
+        - echo "Postgress Connection Details:- Host:$node_private_ip, PORT:32102"
+    when: manual
+    only:
+        - web
+
+modify_superset_config:
+    stage: modify_superset_config
+    script:
+        - export KUBECONFIG=$DATAOPS_CLUSTER_KUBECONFIG
+        - kubectl create ns superset                        
+        - kubectl config set-context --current --namespace=superset
+        - echo "---------------------| Modifyig Changes in superset_config |---------------------"
+        - superset_config=$(cat superset_config.py | base64)
+        - helm upgrade --install my-superset ./superset-helm/. --set-file configOverrides.my-override=superset_config.py
+        - echo "---------------------| superset_config Modified Successfully |---------------------"
+    when: manual
+    only:
+        - web
+
+destroy_superset:
+    stage: destroy_superset
+    script:
+        - export KUBECONFIG=$DATAOPS_CLUSTER_KUBECONFIG
+        - echo "---------------------| Destroying Apache Superset |---------------------"
+        - helm uninstall my-superset -n superset
+        - kubectl delete job.batch/superset-init-db -n superset
+        - sleep 30s
+        - kubectl delete ns superset
+        - echo "---------------------| Apache Superset Destroyed Successfully |---------------------"
+    when: manual
+    only:
+        - web
