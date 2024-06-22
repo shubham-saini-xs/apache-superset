@@ -84,7 +84,6 @@ Users have the option to customize the deployment by modifying the provided GitL
 
 ## Maintainers
 
-- Sandeep Chaudhary
 - Subham Saini
 
 Feel free to reach out to the maintainers for assistance or questions related to Apache Superset deployment and customization in Kubernetes environment.
